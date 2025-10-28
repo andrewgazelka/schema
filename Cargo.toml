@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = ["schema", "schema-derive", "schema-anthropic", "schema-openapi"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/andrewgazelka/schema"
+description = "JSON Schema generation from Rust types"
+readme = "README.md"
+keywords = ["json", "schema", "validation"]
+categories = ["encoding", "development-tools"]
+
+[workspace.dependencies]
+schema = { path = "schema" }
+schema-derive = { path = "schema-derive" }
+schema-anthropic = { path = "schema-anthropic" }
+schema-openapi = { path = "schema-openapi" }
+
+# Proc macro dependencies
+syn = { version = "2.0", features = ["full", "extra-traits"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+
+# Testing
+trybuild = "1.0"
+serde_json = "1.0"

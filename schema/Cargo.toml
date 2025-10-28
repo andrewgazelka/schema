@@ -1,0 +1,21 @@
+[package]
+name = "schema"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+schema-derive = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+schema-anthropic = { workspace = true }
+
+[lib]
+path = "src/lib.rs"
