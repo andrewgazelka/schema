@@ -21,6 +21,36 @@ pub fn schema_type_to_openapi(schema: &SchemaType) -> Value {
                 "items": schema_type_to_openapi(items)
             })
         }
+        TypeKind::Set { items, .. } => {
+            json!({
+                "type": "array",
+                "items": schema_type_to_openapi(items),
+                "uniqueItems": true
+            })
+        }
+        TypeKind::Map { key, value, .. } => {
+            // If key is String, use additionalProperties (more idiomatic)
+            if matches!(key.kind, TypeKind::String) {
+                json!({
+                    "type": "object",
+                    "additionalProperties": schema_type_to_openapi(value)
+                })
+            } else {
+                // For non-string keys, fall back to array of tuples
+                json!({
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "prefixItems": [
+                            schema_type_to_openapi(key),
+                            schema_type_to_openapi(value)
+                        ],
+                        "minItems": 2,
+                        "maxItems": 2
+                    }
+                })
+            }
+        }
         TypeKind::Object {
             properties,
             required,
@@ -149,10 +179,7 @@ pub fn schema_type_to_openapi(schema: &SchemaType) -> Value {
             if fields.is_empty() {
                 json!({ "type": "array", "maxItems": 0 })
             } else {
-                let items: Vec<Value> = fields
-                    .iter()
-                    .map(schema_type_to_openapi)
-                    .collect();
+                let items: Vec<Value> = fields.iter().map(schema_type_to_openapi).collect();
                 json!({
                     "type": "array",
                     "prefixItems": items,
@@ -348,5 +375,37 @@ mod tests {
         let openapi = to_openapi_schema::<Settings>();
         assert_eq!(openapi["properties"]["enabled"]["type"], "boolean");
         assert_eq!(openapi["properties"]["verified"]["type"], "boolean");
+    }
+
+    #[test]
+    fn test_hashset_unique_items() {
+        use std::collections::HashSet;
+        let openapi = to_openapi_schema::<HashSet<String>>();
+
+        assert_eq!(openapi["type"], "array");
+        assert_eq!(openapi["uniqueItems"], true);
+        assert_eq!(openapi["items"]["type"], "string");
+    }
+
+    #[test]
+    fn test_hashmap_string_keys_additional_properties() {
+        use std::collections::HashMap;
+        let openapi = to_openapi_schema::<HashMap<String, i32>>();
+
+        assert_eq!(openapi["type"], "object");
+        assert_eq!(openapi["additionalProperties"]["type"], "integer");
+    }
+
+    #[test]
+    fn test_hashmap_integer_keys_tuple_array() {
+        use std::collections::HashMap;
+        let openapi = to_openapi_schema::<HashMap<i32, String>>();
+
+        assert_eq!(openapi["type"], "array");
+        assert!(openapi["items"]["prefixItems"].is_array());
+        let items = openapi["items"]["prefixItems"].as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["type"], "integer");
+        assert_eq!(items[1]["type"], "string");
     }
 }

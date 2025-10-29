@@ -1,5 +1,5 @@
 // Re-export derive macro
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, LinkedList};
 
 pub use schema_derive::Schema;
 
@@ -23,6 +23,17 @@ pub enum TypeKind {
     },
     Array {
         items: Box<SchemaType>,
+    },
+    /// Set type with unique items
+    Set {
+        items: Box<SchemaType>,
+        ordered: bool,
+    },
+    /// Map/dictionary type with key-value pairs
+    Map {
+        key: Box<SchemaType>,
+        value: Box<SchemaType>,
+        ordered: bool,
     },
     Enum {
         variants: Vec<String>,
@@ -224,6 +235,67 @@ impl<T: Schema> Schema for Vec<T> {
                 items: Box::new(T::schema()),
             },
             description: None,
+        }
+    }
+}
+
+impl<K: Schema, V: Schema> Schema for HashMap<K, V> {
+    fn schema() -> SchemaType {
+        SchemaType {
+            kind: TypeKind::Map {
+                key: Box::new(K::schema()),
+                value: Box::new(V::schema()),
+                ordered: false,
+            },
+            description: Some("Unordered map/dictionary of key-value pairs".to_string()),
+        }
+    }
+}
+
+impl<T: Schema> Schema for HashSet<T> {
+    fn schema() -> SchemaType {
+        SchemaType {
+            kind: TypeKind::Set {
+                items: Box::new(T::schema()),
+                ordered: false,
+            },
+            description: Some("Unordered set of unique values".to_string()),
+        }
+    }
+}
+
+impl<K: Schema, V: Schema> Schema for BTreeMap<K, V> {
+    fn schema() -> SchemaType {
+        SchemaType {
+            kind: TypeKind::Map {
+                key: Box::new(K::schema()),
+                value: Box::new(V::schema()),
+                ordered: true,
+            },
+            description: Some("Ordered map/dictionary of key-value pairs".to_string()),
+        }
+    }
+}
+
+impl<T: Schema> Schema for BTreeSet<T> {
+    fn schema() -> SchemaType {
+        SchemaType {
+            kind: TypeKind::Set {
+                items: Box::new(T::schema()),
+                ordered: true,
+            },
+            description: Some("Ordered set of unique values".to_string()),
+        }
+    }
+}
+
+impl<T: Schema> Schema for LinkedList<T> {
+    fn schema() -> SchemaType {
+        SchemaType {
+            kind: TypeKind::Array {
+                items: Box::new(T::schema()),
+            },
+            description: Some("Doubly-linked list".to_string()),
         }
     }
 }

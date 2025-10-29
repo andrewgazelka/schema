@@ -18,11 +18,29 @@ pub fn schema_type_to_wit(schema: &SchemaType, type_name: Option<&str>) -> Strin
             let item_type = schema_type_to_wit(items, None);
             format!("list<{}>", item_type)
         }
+        TypeKind::Set { items, .. } => {
+            // WIT has no native set type, represent as list
+            let item_type = schema_type_to_wit(items, None);
+            format!("list<{}>", item_type)
+        }
+        TypeKind::Map { key, value, .. } => {
+            // WIT has no native map type, represent as list of tuples
+            let key_type = schema_type_to_wit(key, None);
+            let value_type = schema_type_to_wit(value, None);
+            format!("list<tuple<{}, {}>>", key_type, value_type)
+        }
         TypeKind::Object {
             properties,
             required,
-        } => record_to_wit(properties, required, type_name, schema.description.as_deref()),
-        TypeKind::Enum { variants } => enum_to_wit(variants, type_name, schema.description.as_deref()),
+        } => record_to_wit(
+            properties,
+            required,
+            type_name,
+            schema.description.as_deref(),
+        ),
+        TypeKind::Enum { variants } => {
+            enum_to_wit(variants, type_name, schema.description.as_deref())
+        }
         TypeKind::Variant { cases } => {
             variant_to_wit(cases, type_name, schema.description.as_deref())
         }
@@ -99,7 +117,11 @@ fn record_to_wit(
             field_type
         };
 
-        output.push_str(&format!("    {}: {},\n", to_kebab_case(field_name), final_type));
+        output.push_str(&format!(
+            "    {}: {},\n",
+            to_kebab_case(field_name),
+            final_type
+        ));
     }
 
     output.push('}');
@@ -335,5 +357,32 @@ mod tests {
         assert!(wit.contains("address: record"));
         assert!(wit.contains("street: string"));
         assert!(wit.contains("city: string"));
+    }
+
+    #[test]
+    fn test_hashset_as_list() {
+        use std::collections::HashSet;
+        let wit = to_wit_type::<HashSet<String>>();
+
+        // WIT has no set type, should be list
+        assert_eq!(wit, "list<string>");
+    }
+
+    #[test]
+    fn test_hashmap_as_list_of_tuples() {
+        use std::collections::HashMap;
+        let wit = to_wit_type::<HashMap<String, i32>>();
+
+        // WIT has no map type, should be list of tuples
+        assert_eq!(wit, "list<tuple<string, s32>>");
+    }
+
+    #[test]
+    fn test_btreemap_as_list_of_tuples() {
+        use std::collections::BTreeMap;
+        let wit = to_wit_type::<BTreeMap<u32, String>>();
+
+        // WIT has no map type, should be list of tuples
+        assert_eq!(wit, "list<tuple<u32, string>>");
     }
 }

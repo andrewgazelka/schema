@@ -57,6 +57,33 @@ pub fn to_anthropic_schema(schema: &SchemaType) -> Value {
             obj.insert("items".to_string(), to_anthropic_schema(items));
         }
 
+        TypeKind::Set { items, .. } => {
+            obj.insert("type".to_string(), json!("array"));
+            obj.insert("items".to_string(), to_anthropic_schema(items));
+            obj.insert("uniqueItems".to_string(), json!(true));
+        }
+
+        TypeKind::Map { key, value, .. } => {
+            // If key is String, use additionalProperties
+            if matches!(key.kind, TypeKind::String) {
+                obj.insert("type".to_string(), json!("object"));
+                obj.insert(
+                    "additionalProperties".to_string(),
+                    to_anthropic_schema(value),
+                );
+            } else {
+                // For non-string keys, use array of tuples
+                let tuple_schema = SchemaType {
+                    kind: TypeKind::Tuple {
+                        fields: vec![(**key).clone(), (**value).clone()],
+                    },
+                    description: None,
+                };
+                obj.insert("type".to_string(), json!("array"));
+                obj.insert("items".to_string(), to_anthropic_schema(&tuple_schema));
+            }
+        }
+
         TypeKind::Enum { variants } => {
             obj.insert("type".to_string(), json!("string"));
             obj.insert("enum".to_string(), json!(variants));
@@ -110,9 +137,13 @@ pub fn to_anthropic_schema(schema: &SchemaType) -> Value {
             let mut all_fields = std::collections::HashMap::new();
             for case in cases {
                 if let Some(data) = &case.data {
-                    if let TypeKind::Object { properties: props, .. } = &data.kind {
+                    if let TypeKind::Object {
+                        properties: props, ..
+                    } = &data.kind
+                    {
                         for (field_name, field_schema) in props {
-                            all_fields.entry(field_name.clone())
+                            all_fields
+                                .entry(field_name.clone())
                                 .or_insert_with(|| field_schema.clone());
                         }
                     }
@@ -137,7 +168,10 @@ pub fn to_anthropic_schema(schema: &SchemaType) -> Value {
 
             obj.insert("type".to_string(), json!("object"));
             obj.insert("properties".to_string(), Value::Object(properties));
-            obj.insert("description".to_string(), json!("Result type - exactly one of ok or error will be present"));
+            obj.insert(
+                "description".to_string(),
+                json!("Result type - exactly one of ok or error will be present"),
+            );
         }
 
         TypeKind::Tuple { fields } => {
@@ -146,10 +180,7 @@ pub fn to_anthropic_schema(schema: &SchemaType) -> Value {
                 obj.insert("type".to_string(), json!("array"));
                 obj.insert("maxItems".to_string(), json!(0));
             } else {
-                let items: Vec<Value> = fields
-                    .iter()
-                    .map(to_anthropic_schema)
-                    .collect();
+                let items: Vec<Value> = fields.iter().map(to_anthropic_schema).collect();
                 obj.insert("type".to_string(), json!("array"));
                 obj.insert("prefixItems".to_string(), json!(items));
                 obj.insert("minItems".to_string(), json!(fields.len()));
