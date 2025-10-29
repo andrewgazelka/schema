@@ -7,7 +7,7 @@ pub fn to_wit_type<T: Schema>() -> String {
 }
 
 /// Convert a SchemaType to WIT, optionally with a type name for records/variants/enums
-fn schema_type_to_wit(schema: &SchemaType, type_name: Option<&str>) -> String {
+pub fn schema_type_to_wit(schema: &SchemaType, type_name: Option<&str>) -> String {
     match &schema.kind {
         TypeKind::String => "string".to_string(),
         TypeKind::Boolean => "bool".to_string(),

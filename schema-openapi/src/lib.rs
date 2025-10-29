@@ -7,7 +7,8 @@ pub fn to_openapi_schema<T: Schema>() -> Value {
     schema_type_to_openapi(&T::schema())
 }
 
-fn schema_type_to_openapi(schema: &SchemaType) -> Value {
+/// Convert a SchemaType to OpenAPI 3.0 schema format
+pub fn schema_type_to_openapi(schema: &SchemaType) -> Value {
     let mut result = match &schema.kind {
         TypeKind::String => json!({ "type": "string" }),
         TypeKind::Number(_) => json!({ "type": "number" }),
