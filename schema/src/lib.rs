@@ -27,15 +27,37 @@ pub enum TypeKind {
     Enum {
         variants: Vec<String>,
     },
+    /// Legacy flattened representation for backward compatibility
     TaggedUnion {
         tag_field: String,
         tag_variants: Vec<String>,
         data_fields: HashMap<String, SchemaType>,
     },
+    /// Proper variant type that preserves per-case structure (for WIT/WASM)
+    Variant {
+        cases: Vec<VariantCase>,
+    },
+    /// Result type (for WIT/WASM)
+    Result {
+        ok: Box<SchemaType>,
+        err: Box<SchemaType>,
+    },
+    /// Tuple type (for WIT/WASM)
+    Tuple {
+        fields: Vec<SchemaType>,
+    },
     #[allow(dead_code)]
     Ref {
         name: String,
     },
+}
+
+/// A single case in a variant type
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariantCase {
+    pub name: String,
+    pub data: Option<SchemaType>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,6 +222,63 @@ impl<T: Schema> Schema for Vec<T> {
         SchemaType {
             kind: TypeKind::Array {
                 items: Box::new(T::schema()),
+            },
+            description: None,
+        }
+    }
+}
+
+impl<T: Schema, E: Schema> Schema for Result<T, E> {
+    fn schema() -> SchemaType {
+        SchemaType {
+            kind: TypeKind::Result {
+                ok: Box::new(T::schema()),
+                err: Box::new(E::schema()),
+            },
+            description: None,
+        }
+    }
+}
+
+// Tuple implementations for common sizes
+impl<T1: Schema> Schema for (T1,) {
+    fn schema() -> SchemaType {
+        SchemaType {
+            kind: TypeKind::Tuple {
+                fields: vec![T1::schema()],
+            },
+            description: None,
+        }
+    }
+}
+
+impl<T1: Schema, T2: Schema> Schema for (T1, T2) {
+    fn schema() -> SchemaType {
+        SchemaType {
+            kind: TypeKind::Tuple {
+                fields: vec![T1::schema(), T2::schema()],
+            },
+            description: None,
+        }
+    }
+}
+
+impl<T1: Schema, T2: Schema, T3: Schema> Schema for (T1, T2, T3) {
+    fn schema() -> SchemaType {
+        SchemaType {
+            kind: TypeKind::Tuple {
+                fields: vec![T1::schema(), T2::schema(), T3::schema()],
+            },
+            description: None,
+        }
+    }
+}
+
+impl<T1: Schema, T2: Schema, T3: Schema, T4: Schema> Schema for (T1, T2, T3, T4) {
+    fn schema() -> SchemaType {
+        SchemaType {
+            kind: TypeKind::Tuple {
+                fields: vec![T1::schema(), T2::schema(), T3::schema(), T4::schema()],
             },
             description: None,
         }

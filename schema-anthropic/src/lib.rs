@@ -91,6 +91,72 @@ pub fn to_anthropic_schema(schema: &SchemaType) -> Value {
             obj.insert("required".to_string(), json!([tag_field]));
         }
 
+        TypeKind::Variant { cases } => {
+            // Similar to TaggedUnion but with proper per-case structure
+            // Flatten for Anthropic compatibility
+            let mut properties = serde_json::Map::new();
+
+            // Add discriminator field
+            let tag_variants: Vec<String> = cases.iter().map(|c| c.name.clone()).collect();
+            properties.insert(
+                "type".to_string(),
+                json!({
+                    "type": "string",
+                    "enum": tag_variants,
+                }),
+            );
+
+            // Collect all unique fields from all cases
+            let mut all_fields = std::collections::HashMap::new();
+            for case in cases {
+                if let Some(data) = &case.data {
+                    if let TypeKind::Object { properties: props, .. } = &data.kind {
+                        for (field_name, field_schema) in props {
+                            all_fields.entry(field_name.clone())
+                                .or_insert_with(|| field_schema.clone());
+                        }
+                    }
+                }
+            }
+
+            // Add all fields as optional
+            for (field_name, field_schema) in all_fields {
+                properties.insert(field_name, to_anthropic_schema(&field_schema));
+            }
+
+            obj.insert("type".to_string(), json!("object"));
+            obj.insert("properties".to_string(), Value::Object(properties));
+            obj.insert("required".to_string(), json!(["type"]));
+        }
+
+        TypeKind::Result { ok, err } => {
+            // Represent as union with ok/error fields
+            let mut properties = serde_json::Map::new();
+            properties.insert("ok".to_string(), to_anthropic_schema(ok));
+            properties.insert("error".to_string(), to_anthropic_schema(err));
+
+            obj.insert("type".to_string(), json!("object"));
+            obj.insert("properties".to_string(), Value::Object(properties));
+            obj.insert("description".to_string(), json!("Result type - exactly one of ok or error will be present"));
+        }
+
+        TypeKind::Tuple { fields } => {
+            // Represent as fixed-length array
+            if fields.is_empty() {
+                obj.insert("type".to_string(), json!("array"));
+                obj.insert("maxItems".to_string(), json!(0));
+            } else {
+                let items: Vec<Value> = fields
+                    .iter()
+                    .map(to_anthropic_schema)
+                    .collect();
+                obj.insert("type".to_string(), json!("array"));
+                obj.insert("prefixItems".to_string(), json!(items));
+                obj.insert("minItems".to_string(), json!(fields.len()));
+                obj.insert("maxItems".to_string(), json!(fields.len()));
+            }
+        }
+
         TypeKind::Ref { name } => {
             return json!({ "$ref": format!("#/definitions/{}", name) });
         }

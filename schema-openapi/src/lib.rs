@@ -51,7 +51,7 @@ fn schema_type_to_openapi(schema: &SchemaType) -> Value {
             tag_variants,
             data_fields,
         } => {
-            // For OpenAPI, represent as oneOf with discriminator
+            // Legacy: For OpenAPI, represent as oneOf with discriminator
             let mut schemas = Vec::new();
 
             for variant in tag_variants {
@@ -82,6 +82,83 @@ fn schema_type_to_openapi(schema: &SchemaType) -> Value {
                     "propertyName": tag_field
                 }
             })
+        }
+        TypeKind::Variant { cases } => {
+            // Proper variant type - OpenAPI oneOf without forced discriminator
+            let schemas: Vec<Value> = cases
+                .iter()
+                .map(|case| {
+                    match &case.data {
+                        None => {
+                            // Unit variant - represent as const string
+                            json!({
+                                "type": "string",
+                                "const": case.name
+                            })
+                        }
+                        Some(data) => {
+                            // Variant with data - wrap in object with tag
+                            let data_schema = schema_type_to_openapi(data);
+                            let mut obj = json!({
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "type": "string",
+                                        "const": case.name
+                                    },
+                                    "data": data_schema
+                                },
+                                "required": ["type", "data"]
+                            });
+
+                            if let Some(desc) = &case.description {
+                                obj["description"] = json!(desc);
+                            }
+                            obj
+                        }
+                    }
+                })
+                .collect();
+
+            json!({ "oneOf": schemas })
+        }
+        TypeKind::Result { ok, err } => {
+            // Result type - OpenAPI oneOf with ok/error variants
+            json!({
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "ok": schema_type_to_openapi(ok)
+                        },
+                        "required": ["ok"]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "error": schema_type_to_openapi(err)
+                        },
+                        "required": ["error"]
+                    }
+                ]
+            })
+        }
+        TypeKind::Tuple { fields } => {
+            // Tuple - OpenAPI array with fixed items
+            if fields.is_empty() {
+                json!({ "type": "array", "maxItems": 0 })
+            } else {
+                let items: Vec<Value> = fields
+                    .iter()
+                    .map(schema_type_to_openapi)
+                    .collect();
+                json!({
+                    "type": "array",
+                    "prefixItems": items,
+                    "minItems": fields.len(),
+                    "maxItems": fields.len()
+                })
+            }
         }
         TypeKind::Ref { name } => {
             json!({
@@ -193,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tagged_union() {
+    fn test_variant() {
         #[derive(Schema)]
         enum Message {
             Text {
@@ -208,8 +285,17 @@ mod tests {
 
         let openapi = to_openapi_schema::<Message>();
         assert!(openapi.get("oneOf").is_some());
-        assert!(openapi.get("discriminator").is_some());
-        assert_eq!(openapi["discriminator"]["propertyName"], "type");
+
+        // New Variant type generates proper per-case structure
+        let cases = openapi["oneOf"].as_array().unwrap();
+        assert_eq!(cases.len(), 2);
+
+        // Each case should be an object with type and data fields
+        for case in cases {
+            assert_eq!(case["type"], "object");
+            assert!(case["properties"].get("type").is_some());
+            assert!(case["properties"].get("data").is_some());
+        }
     }
 
     #[test]

@@ -1,0 +1,16 @@
+[package]
+name = "schema-wit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Generate WebAssembly Interface Type (WIT) definitions from Rust Schema types"
+keywords = ["wasm", "wit", "component-model", "schema"]
+categories = ["encoding", "development-tools", "wasm"]
+
+[dependencies]
+schema.workspace = true
+
+[dev-dependencies]
+schema-derive.workspace = true

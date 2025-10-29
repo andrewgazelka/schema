@@ -166,7 +166,7 @@ fn derive_struct(data: &syn::DataStruct, attrs: &[syn::Attribute]) -> proc_macro
 }
 
 fn derive_enum(data: &syn::DataEnum, attrs: &[syn::Attribute]) -> proc_macro2::TokenStream {
-    let description_expr = description_expr(attrs);
+    let type_description = description_expr(attrs);
 
     // Check if this is a simple enum (all variants are unit) or tagged union
     let all_unit = data
@@ -193,59 +193,102 @@ fn derive_enum(data: &syn::DataEnum, attrs: &[syn::Attribute]) -> proc_macro2::T
                     kind: schema::TypeKind::Enum {
                         variants,
                     },
-                    description: #description_expr,
+                    description: #type_description,
                 }
             }
         }
     } else {
-        // Tagged union - flatten into discriminator + data fields
-        let mut tag_variants = vec![];
-        let mut all_data_fields = std::collections::HashMap::new();
+        // Proper variant type that preserves per-case structure
+        let mut variant_cases = vec![];
 
         for variant in &data.variants {
             let variant_name = variant.ident.to_string().to_lowercase();
-            tag_variants.push(quote! {
-                tag_variants.push(#variant_name.to_string());
-            });
+            let variant_docs = description_expr(&variant.attrs);
 
-            // Collect all possible data fields from this variant
-            #[allow(clippy::excessive_nesting)]
-            if let Fields::Named(fields) = &variant.fields {
-                for field in &fields.named {
-                    let field_name = field.ident.as_ref().unwrap().to_string();
-                    if !all_data_fields.contains_key(&field_name) {
+            let data_expr = match &variant.fields {
+                Fields::Unit => {
+                    // No data for this case
+                    quote! { None }
+                }
+                Fields::Named(fields) => {
+                    // Build a record type from the named fields
+                    let mut properties = vec![];
+                    let mut required = vec![];
+
+                    for field in &fields.named {
+                        if is_skipped(&field.attrs) {
+                            continue;
+                        }
+
+                        let field_name = field.ident.as_ref().unwrap();
+                        let field_name_str = field_name.to_string();
                         let field_type = &field.ty;
+                        let is_optional = is_option_type(field_type);
                         let schema_expr = schema_with_description(field_type, &field.attrs);
 
-                        all_data_fields.insert(
-                            field_name.clone(),
-                            quote! {
-                                data_fields.insert(
-                                    #field_name.to_string(),
-                                    #schema_expr
-                                );
+                        properties.push(quote! {
+                            properties.insert(
+                                #field_name_str.to_string(),
+                                #schema_expr
+                            );
+                        });
+
+                        if !is_optional {
+                            required.push(quote! {
+                                required.push(#field_name_str.to_string());
+                            });
+                        }
+                    }
+
+                    quote! {
+                        Some(schema::SchemaType {
+                            kind: schema::TypeKind::Object {
+                                properties: {
+                                    let mut properties = std::collections::HashMap::new();
+                                    #(#properties)*
+                                    properties
+                                },
+                                required: {
+                                    let mut required = Vec::new();
+                                    #(#required)*
+                                    required
+                                },
                             },
-                        );
+                            description: None,
+                        })
                     }
                 }
-            }
-        }
+                Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
+                    // Single unnamed field - use it directly
+                    let field_type = &fields.unnamed[0].ty;
+                    let schema_expr = schema_with_description(field_type, &fields.unnamed[0].attrs);
+                    quote! { Some(#schema_expr) }
+                }
+                Fields::Unnamed(_) => {
+                    return quote! {
+                        compile_error!("Schema derive does not support enum variants with multiple unnamed fields");
+                    };
+                }
+            };
 
-        let data_field_inserts: Vec<_> = all_data_fields.values().collect();
+            variant_cases.push(quote! {
+                cases.push(schema::VariantCase {
+                    name: #variant_name.to_string(),
+                    data: #data_expr,
+                    description: #variant_docs,
+                });
+            });
+        }
 
         quote! {
             {
-                let mut tag_variants = Vec::new();
-                let mut data_fields = std::collections::HashMap::new();
-                #(#tag_variants)*
-                #(#data_field_inserts)*
+                let mut cases = Vec::new();
+                #(#variant_cases)*
                 schema::SchemaType {
-                    kind: schema::TypeKind::TaggedUnion {
-                        tag_field: "type".to_string(),
-                        tag_variants,
-                        data_fields,
+                    kind: schema::TypeKind::Variant {
+                        cases,
                     },
-                    description: #description_expr,
+                    description: #type_description,
                 }
             }
         }

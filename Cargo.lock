@@ -103,6 +103,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "schema-wit"
+version = "0.1.0"
+dependencies = [
+ "schema",
+ "schema-derive",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"

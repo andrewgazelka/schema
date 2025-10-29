@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["schema", "schema-derive", "schema-anthropic", "schema-openapi"]
+members = ["schema", "schema-derive", "schema-anthropic", "schema-openapi", "schema-wit"]
 
 [workspace.package]
 version = "0.1.0"
@@ -18,6 +18,7 @@ schema = { path = "schema" }
 schema-derive = { path = "schema-derive" }
 schema-anthropic = { path = "schema-anthropic" }
 schema-openapi = { path = "schema-openapi" }
+schema-wit = { path = "schema-wit" }
 
 # Proc macro dependencies
 syn = { version = "2.0", features = ["full", "extra-traits"] }
